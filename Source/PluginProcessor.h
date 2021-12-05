@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include "StkLite-4.6.1/DelayA.h"
+#include "StkLite-4.6.1/BiQuad.h"
 #include "Defines.h"
 
 //==============================================================================
@@ -65,6 +66,8 @@ private:
     juce::AudioParameterFloat* densityParam;
     
     std::vector<stk::DelayA> delays;
+    std::vector<stk::BiQuad> all_passes;
+    std::vector<stk::BiQuad> low_passes;
 //    std::vector<float> b_coeffs;
 //    std::vector<float> c_coeffs;
 //    std::vector<float> g_coeffs;
@@ -72,6 +75,8 @@ private:
     float c_coeffs [N_DELAYS];
     float g_coeffs [N_DELAYS];
     float M [N_DELAYS];
+    
+    std::vector<stk::BiQuad> output_allpasses;
     
 
     juce::dsp::Matrix<float> Q = juce::dsp::Matrix<float>(N_DELAYS, N_DELAYS);

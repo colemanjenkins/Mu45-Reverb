@@ -323,7 +323,7 @@ void Mu45FilterCalc::calcCoeffsBPF(float* coeffs, float fc, float Q, float fs)
 // R      = The pole radius. This affects how steep the phase curve is at fc
 //          (R must be <= 1.0 for the filter to be stable!)
 // fs     = sampling rate in Hz
-void calcCoeffsAPF(float* coeffs, float fc, float R, float fs)
+void Mu45FilterCalc::calcCoeffsAPF(float* coeffs, float fc, float R, float fs)
 {
     float theta, b0, b1, b2, a1, a2;
     theta = 2*Mu45FilterCalc::myPI*fc/fs;

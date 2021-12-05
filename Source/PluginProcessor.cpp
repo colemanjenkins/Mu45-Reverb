@@ -9,6 +9,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Defines.h"
+#include "Mu45FilterCalc/Mu45FilterCalc.h"
 
 //==============================================================================
 ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor()
@@ -145,12 +146,12 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     // initialisation that you need..
     fs = sampleRate;
     
-    //    float f = 0.5;
-        // Hadamard matrix 4x4
-    //    float data[N_DELAYS][N_DELAYS] = {{f, f, f, f},
-    //                    {f, -f, f, -f},
-    //                    {f, f, -f, -f},
-    //                    {f, -f, -f, f}};
+//        float f = 0.5;
+//        // Hadamard matrix 4x4
+//        float data[N_DELAYS][N_DELAYS] = {{f, f, f, f},
+//                        {f, -f, f, -f},
+//                        {f, f, -f, -f},
+//                        {f, -f, -f, f}};
 
     
     float f = 1/sqrt(2);
@@ -167,22 +168,24 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
         }
     }
     
-//    float M_vals[] = {2341, 2687, 3329, 3797}; // spaced out prime numbers
-//    for (int i = 0; i < N_DELAYS; i++) M[i] = M_vals[i];
-    int approx_initial = fs*0.1; // 100 ms in samples
-    int approx_dist = approx_initial/3;
-    int increase = approx_dist/2;
-    for (int i = 0; i < N_DELAYS; i++) {
-        M[i] = nearest_prime(approx_initial + i*(approx_dist + increase));
-    }
+    float M_vals[] = {2341, 2411, 2521, 2621}; // spaced out prime numbers
+    for (int i = 0; i < N_DELAYS; i++) M[i] = M_vals[i];
+//    int approx_initial = fs*0.05; // 50 ms in samples
+//    int approx_dist = approx_initial/3.3;
+//    int increase = approx_dist/5.7;
+//    for (int i = 0; i < N_DELAYS; i++) {
+//        M[i] = nearest_prime(approx_initial + i*(approx_dist + increase));
+//    }
 
     
 //    int M[] = {2341, 2687, 3329, 3797}; // spaced out prime numbers
     for (int del = 0; del < N_DELAYS; del++) {
         delays.push_back(stk::DelayA(M[del], M[del]));
+        all_passes.push_back(stk::BiQuad());
+        low_passes.push_back(stk::BiQuad());
     }
     
-    
+    output_allpasses.push_back(stk::BiQuad());
     
     
 }
@@ -228,12 +231,14 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     float total_wet_gain = wetGainParam->get()/100.0;
     
     for (int i = 0; i < N_DELAYS; i++) {
-        b_coeffs[i] = 1.0/N_DELAYS; // even to each delay line
+//        b_coeffs[i] = 1.0/N_DELAYS; // even to each delay line
+        b_coeffs[i] = 1;
         
 //        c_coeffs[i] = total_wet_gain/N_DELAYS;
         c_coeffs[i] = total_wet_gain; // bc b's are divided, this can be maxed
         
-        g_coeffs[i] = pow(10,-60.0*M[i]/(T60*fs)); // determine decay of signals
+//        g_coeffs[i] = pow(10,-60.0*M[i]/(T60*fs)); // determine decay of signals
+        g_coeffs[i] = pow(10,-3.0*M[i]/(T60*fs)); // determine decay of signals
         
     }
     
@@ -249,7 +254,25 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     }
     control--;
 
+    float lp_fc = 3000; // 3 kHz, low pass corner frequency
+    float ap_fcs[] = {225, 556, 441, 341}; // all pass corner frequencies
+                                            // numbers from "Freeverb" digaram by JOS
     
+    float lp_coeffs[5];
+    Mu45FilterCalc::calcCoeffsLPF(lp_coeffs, lp_fc, 0.5, fs);
+    
+    float ap_coeffs[5];
+    
+    for (int i = 0; i < N_DELAYS; i++) {
+        Mu45FilterCalc::calcCoeffsAPF(ap_coeffs, ap_fcs[i], 0.3, fs);
+        all_passes[i].setCoefficients(ap_coeffs[0], ap_coeffs[1], ap_coeffs[2], ap_coeffs[3], ap_coeffs[4]);
+        
+        low_passes[i].setCoefficients(lp_coeffs[0], lp_coeffs[1], lp_coeffs[2], lp_coeffs[3], lp_coeffs[4]);
+    }
+    
+    Mu45FilterCalc::calcCoeffsAPF(ap_coeffs, 501, 0.3 , fs);
+    output_allpasses[0].setCoefficients(ap_coeffs[0], ap_coeffs[1], ap_coeffs[2], ap_coeffs[3], ap_coeffs[4]);
+
     
 }
 
@@ -274,8 +297,13 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
     auto* rightChannelData = buffer.getWritePointer(1);
     
     float x_n[N_DELAYS]; // inputs to delay lines
-    juce::dsp::Matrix<float> delay_out = juce::dsp::Matrix<float>(N_DELAYS, 1);
-    juce::dsp::Matrix<float> matrix_out = juce::dsp::Matrix<float>(N_DELAYS, 1);
+    auto delay_out = juce::dsp::Matrix<float>(N_DELAYS, 1);
+    auto matrix_out = juce::dsp::Matrix<float>(N_DELAYS, 1);
+    float fbGain_out[N_DELAYS];
+    float ap_out[N_DELAYS];
+    float lp_out[N_DELAYS];
+    
+    
     float wetOutput, input;
 
     for (int samp = 0; samp < buffer.getNumSamples(); samp++) {
@@ -286,8 +314,13 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         // get feedback values
         for (int i = 0; i < N_DELAYS; i++){
             delay_out(i,0) = delays[i].nextOut();
-            wetOutput += delays[i].nextOut()*c_coeffs[i];
+            delay_out(i,0) = low_passes[i].tick(delay_out(i,0));
+            delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
+            
+            wetOutput += delay_out(i,0)*c_coeffs[i];
         }
+        
+        wetOutput = output_allpasses[0].tick(wetOutput);
         
         leftChannelData[samp] = wetOutput + dryGain*input;
         rightChannelData[samp] = wetOutput + dryGain*input;
@@ -295,8 +328,16 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         matrix_out = Q * delay_out; // matrix multiply
         
         for (int i = 0; i < N_DELAYS; i++) {
-            x_n[i] = input*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
+            // feedback
+            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
+//            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
+//            lp_out[i] = low_passes[i].tick(ap_out[i]);
             
+            // combine feedback and input
+//            x_n[i] = input*b_coeffs[i] + lp_out[i];
+            x_n[i] = input*b_coeffs[i] + fbGain_out[i];
+            
+            // send to delay line
             delays[i].tick(x_n[i]);
         }
 
