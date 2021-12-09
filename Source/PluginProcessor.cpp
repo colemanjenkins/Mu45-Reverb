@@ -44,6 +44,11 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                                 0.0f,
                                                                 100.0f,
                                                                 40.0f));
+    addParameter(sizeParam = new juce::AudioParameterFloat("size",
+                                                                "Size",
+                                                                0.0f,
+                                                                100.0f,
+                                                                40.0f));
 }
 
 ColemanJPFinalAReverbTaleAudioProcessor::~ColemanJPFinalAReverbTaleAudioProcessor()
@@ -144,7 +149,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
-    fs = sampleRate;
+    fs = (float) sampleRate;
     
 //        float f = 0.5;
 //        // Hadamard matrix 4x4
@@ -183,6 +188,8 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     
     output_allpasses.push_back(stk::BiQuad());
     
+    early_delayL.setMaximumDelay(fs);
+    early_delayR.setMaximumDelay(fs);
     
 }
 
@@ -274,7 +281,18 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
 //    output_allpasses[0].setDelayLength(301);
 //    output_allpasses[0].setG(0.7);
 
-    
+    float room_size = sizeParam->get()*10 + 1; // m (roughly used), scaled from 1 - 50 m
+    float time_to_front = room_size/25.0/343.0; // using speed of sound
+
+    float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
+        time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
+    float tap_valsR[] = {time_to_front*fs, (time_to_front + .0002f)*fs, time_to_front*1.2f*fs,
+        (time_to_front*1.87f + .00025f)*fs, time_to_front*2.33f*fs, time_to_front*2.77f*fs};
+    for (int i = 0; i < N_TAPS; i++) {
+        tapsL[i] = tap_valsL[i];
+        tapsR[i] = tap_valsR[i];
+    }
+
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -305,42 +323,53 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
     float lp_out[N_DELAYS];
     
     
-    float wetOutput, input;
+    float leftWetOutput, rightWetOutput, leftInput, rightInput;
 
     for (int samp = 0; samp < buffer.getNumSamples(); samp++) {
-        // mono for now
-        input = (leftChannelData[samp] + rightChannelData[samp])/2.0;
-        wetOutput = 0;
+        leftInput = leftChannelData[samp];
+        rightInput = rightChannelData[samp];
         
-        // get feedback values
-        for (int i = 0; i < N_DELAYS; i++){
-            delay_out(i,0) = delays[i].nextOut();
-            delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
-            delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
-            
-            wetOutput += delay_out(i,0)*c_coeffs[i];
+        leftWetOutput = 0;
+        rightWetOutput = 0;
+        
+        early_delayL.tick(leftInput);
+        early_delayR.tick(rightInput);
+        for (int i = 0; i < N_TAPS -  1; i++) {
+            leftWetOutput += early_delayL.tapOut((unsigned long) tapsL[i])/sqrt(6);
+            rightWetOutput += early_delayL.tapOut((unsigned long) tapsL[i])/sqrt(6);
         }
         
-        wetOutput = output_allpasses[0].tick(wetOutput);
+//        // get feedback values
+//        for (int i = 0; i < N_DELAYS; i++){
+//            delay_out(i,0) = delays[i].nextOut();
+//            delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
+//            delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
+//
+//            leftWetOutput += delay_out(i,0)*c_coeffs[i];
+//            rightWetOutput += delay_out(i,0)*c_coeffs[i];
+//        }
+//
+//        leftWetOutput = output_allpasses[0].tick(leftWetOutput);
+//        rightWetOutput = output_allpasses[0].tick(rightWetOutput);
         
-        leftChannelData[samp] = wetOutput + dryGain*input;
-        rightChannelData[samp] = wetOutput + dryGain*input;
+        leftChannelData[samp] = leftWetOutput*wetGainParam->get()/100.0 + dryGain*leftInput;
+        rightChannelData[samp] = rightWetOutput*wetGainParam->get()/100.0 + dryGain*rightInput;
         
-        matrix_out = Q * delay_out; // matrix multiply
-        
-        for (int i = 0; i < N_DELAYS; i++) {
-            // feedback
-            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
-//            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
-//            lp_out[i] = low_passes[i].tick(ap_out[i]);
-            
-            // combine feedback and input
-//            x_n[i] = input*b_coeffs[i] + lp_out[i];
-            x_n[i] = input*b_coeffs[i] + fbGain_out[i];
-            
-            // send to delay line
-            delays[i].tick(x_n[i]);
-        }
+//        matrix_out = Q * delay_out; // matrix multiply
+//
+//        for (int i = 0; i < N_DELAYS; i++) {
+//            // feedback
+//            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
+////            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
+////            lp_out[i] = low_passes[i].tick(ap_out[i]);
+//
+//            // combine feedback and input
+////            x_n[i] = input*b_coeffs[i] + lp_out[i];
+//            x_n[i] = leftInput*b_coeffs[i] + fbGain_out[i];
+//
+//            // send to delay line
+//            delays[i].tick(x_n[i]);
+//        }
 
     }
 }

@@ -11,3 +11,4 @@
 #pragma once
 
 #define N_DELAYS 4
+#define N_TAPS   6

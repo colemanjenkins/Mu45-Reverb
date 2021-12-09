@@ -65,10 +65,18 @@ private:
     juce::AudioParameterFloat* dryGainParam;
     juce::AudioParameterFloat* wetGainParam;
     juce::AudioParameterFloat* densityParam;
+    juce::AudioParameterFloat* sizeParam; // controls early reflections (and other?)
     
     std::vector<stk::DelayA> delays;
     std::vector<stk::BiQuad> all_passes;
     std::vector<stk::BiQuad> high_shelfs;
+    
+    stk::DelayA early_delayL;
+    stk::DelayA early_delayR;
+    
+    float tapsL[N_TAPS];
+    float tapsR[N_TAPS];
+    
     float b_coeffs [N_DELAYS];
     float c_coeffs [N_DELAYS];
     float g_coeffs [N_DELAYS];
