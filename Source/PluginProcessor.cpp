@@ -39,11 +39,6 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                                 0.0f,
                                                                 100.0f,
                                                                 30.0f));
-//    addParameter(densityParam = new juce::AudioParameterFloat("density",
-//                                                                "Density",
-//                                                                0.0f,
-//                                                                100.0f,
-//                                                                40.0f));
     addParameter(sizeParam = new juce::AudioParameterFloat("size",
                                                                 "Size",
                                                                 0.0f,
@@ -168,22 +163,13 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
     fs = (float) sampleRate;
-    
-//        float f = 0.5;
-//        // Hadamard matrix 4x4
-//        float data[N_DELAYS][N_DELAYS] = {{f, f, f, f},
-//                        {f, -f, f, -f},
-//                        {f, f, -f, -f},
-//                        {f, -f, -f, f}};
-
-    
+       
     float f = 1/sqrt(2);
     // Modified Hadamard matrix 4x4
     float data[N_DELAYS][N_DELAYS] = {{0, f, f, 0},
                     {-f, 0, 0, -f},
                     {f, 0, 0, -f},
                     {0, f, -f, 0}};
-    
     
     for (int i = 0; i < N_DELAYS; i++) {
         for (int j = 0; j < N_DELAYS; j++) {
@@ -193,23 +179,20 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     
     float M_times[] = {.0307, .034, .0413, .0471};
     for (int i = 0; i < N_DELAYS; i++) M[i] = nearest_prime(M_times[i]*1.5*fs);
-//    float M_vals[] = {2341, 2411, 2521, 2621}; // spaced out prime numbers
-//    float M_vals[] = {727, 881, 1033, 1291};
-//    for (int i = 0; i < N_DELAYS; i++) M[i] = M_vals[i];
-
     
-//    int M[] = {2341, 2687, 3329, 3797}; // spaced out prime numbers
     for (int del = 0; del < N_DELAYS; del++) {
         delays.push_back(stk::DelayA(M[del], M[del]));
-        all_passes.push_back(DelayAPF(2000)); // MAGIC NUMBER
+        all_passes.push_back(DelayAPF(2000, 0.55)); // MAGIC NUMBER
         high_shelfs.push_back(stk::BiQuad());
     }
     
-    output_allpasses.push_back(DelayAPF(2000)); // MAGIC NUMBER
-    
     early_delayL.setMaximumDelay(fs);
     early_delayR.setMaximumDelay(fs);
-        
+    
+    float ap_times[] = {1.07, 2.359, 2.901, 4.73}; // in msec
+    for (int i = 0; i < N_DELAYS; i++) {
+        all_passes[i].setDelayLength(ap_times[i]*fs/1000.0);
+    }
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::releaseResources()
@@ -244,89 +227,37 @@ bool ColemanJPFinalAReverbTaleAudioProcessor::isBusesLayoutSupported (const Buse
 }
 #endif
 
-int control = 0;
 void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     dryGain = dryGainParam->get()/100.0;
     float T60 = decayTimeParam->get();
     float total_wet_gain = wetGainParam->get()/100.0;
     holding = holdParam->get();
+    earlyGain = wetGainParam->get()/100.0*earlyReflParam->get()/100.0;
     
-    
-//    float primes[] = {2,3,5,7};
-//    float
-//
-//    for (int i = 0; i < N_DELAYS; i++) {
-//
-//    }
-    
+    // calculate gain coefficients
+    float sign;
     for (int i = 0; i < N_DELAYS; i++) {
-        float sign = (-2*(i%2)+1);
+        sign = (-2*(i%2)+1);
         b_coeffs[i] = sign*total_wet_gain/sqrt(2); // even to each delay line
-//        if (sign < 0) { // -1
-//            b_coeffs[i] *= densityParam->get()/100;
-//        }
-//        b_coeffs[i] = 1/sqrt(N_DELAYS);
-        
-//        c_coeffs[i] = total_wet_gain/N_DELAYS;
         c_coeffs[i] = 1; // bc b's are divided, this can be maxed
-        
-//        g_coeffs[i] = pow(10,-60.0*M[i]/(T60*fs)); // determine decay of signals
         g_coeffs[i] = pow(10,-3.0*M[i]/(T60*fs)); // determine decay of signals
-        if (holdParam->get()) {
+        
+        if (holding) { // set gain to 1 to continue loop if holding
             g_coeffs[i] = 1;
         }
-        
     }
     
-    if (control <= 0) {
-        DBG("----------");
-        for (int i = 0; i < N_DELAYS; i++) {
-            DBG(std::to_string(i) << ": b - " << std::to_string(b_coeffs[i])
-                << ", c - " << std::to_string(c_coeffs[i])
-                << ", g - " << std::to_string(g_coeffs[i])
-                << ", T60 - " << std::to_string(T60));
-        }
-        control = 200;
-    }
-    control--;
-
-//    float lp_fc = 3000; // 3 kHz, low pass corner frequency
-//    float ap_delays[] = {225, 556, 441, 341}; // all pass corner frequencies
-//    float ap_delays[] = {1109, 1123, 887, 953}; // all pass corner frequencies
-//    float ap_times[4];
-//    if (ABParam->get()) {
-    float ap_times[] = {1.07, 2.359, 2.901, 4.73}; // in msec
-//    } else {
-//        float ap_times[] = {7.63, 8.11, 7.77, 6.13};
-//    }
-
-                                            // numbers from "Freeverb" digaram by JOS
-    
-    float lp_coeffs[5];
-    Mu45FilterCalc::calcCoeffsHighShelf(lp_coeffs, decayFreqParam->get(), dampingParam->get(), fs);
-    
-//    float ap_coeffs[5];
+    // set parameters for high shelf filters
+    float hs_coeffs[5];
+    Mu45FilterCalc::calcCoeffsHighShelf(hs_coeffs, decayFreqParam->get(), dampingParam->get(), fs);
     
     for (int i = 0; i < N_DELAYS; i++) {
-//        Mu45FilterCalc::calcCoeffsAPF(ap_coeffs, ap_fcs[i], 0.3, fs);
-//        all_passes[i].setCoefficients(ap_coeffs[0], ap_coeffs[1], ap_coeffs[2], ap_coeffs[3], ap_coeffs[4]);
-//        delays[i].setDelay(ap_delays[i]);
-//        delays[i].setGain(-.7);
-//        all_passes[i].autoSetFromDelay(ap_delays[i], T60, fs);
-        all_passes[i].autoSetFromDelay(ap_times[i]*fs/1000.0, T60, fs);
-        DBG("all pass g" << std::to_string(i) << ": " << std::to_string(all_passes[i].g));
-        
-        high_shelfs[i].setCoefficients(lp_coeffs[0], lp_coeffs[1], lp_coeffs[2], lp_coeffs[3], lp_coeffs[4]);
+        high_shelfs[i].setCoefficients(hs_coeffs[0], hs_coeffs[1], hs_coeffs[2], hs_coeffs[3], hs_coeffs[4]);
     }
-    
-//    Mu45FilterCalc::calcCoeffsAPF(ap_coeffs, 501, 0.3 , fs);
-//    output_allpasses[0].setCoefficients(ap_coeffs[0], ap_coeffs[1], ap_coeffs[2], ap_coeffs[3], ap_coeffs[4]);
-//    output_allpasses[0].setDelayLength(301);
-//    output_allpasses[0].setG(0.7);
-    output_allpasses[0].autoSetFromDelay(301, T60, fs);
-    
-    float room_size = sizeParam->get()*10 + 1; // m (roughly used), scaled from 1 - 50 m
-    float time_to_front = room_size/25.0/343.0; // using speed of sound
+        
+    // magic numbers that worked when changing early delay lengths :)
+    float room_size = sizeParam->get()*10 + 1;
+    float time_to_front = room_size/25.0/343.0;
 
     float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
         time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
@@ -336,8 +267,6 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
         tapsL[i] = tap_valsL[i];
         tapsR[i] = tap_valsR[i];
     }
-    
-    earlyGain = wetGainParam->get()/100.0*earlyReflParam->get()/100.0;
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -413,7 +342,6 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         leftChannelData[samp] = dryGain*leftInput + earlyGain*leftEarlyDelayed + leftLateOutput;
         rightChannelData[samp] = dryGain*rightInput + earlyGain*rightEarlyDelayed + rightLateOutput;
         
-        
         // determine feedback inputs to delay
         matrix_out = Q * pre_output; // matrix multiply feedback matrix
 
@@ -425,7 +353,6 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
             }
             delays[i].tick(x_n);
         }
-
     }
 }
 

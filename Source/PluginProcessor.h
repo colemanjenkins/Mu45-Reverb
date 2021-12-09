@@ -64,7 +64,6 @@ private:
     juce::AudioParameterFloat* decayTimeParam;
     juce::AudioParameterFloat* dryGainParam;
     juce::AudioParameterFloat* wetGainParam;
-//    juce::AudioParameterFloat* densityParam;
     juce::AudioParameterFloat* sizeParam; // controls early reflections (and other?)
     juce::AudioParameterFloat* dampingParam;
     juce::AudioParameterFloat* decayFreqParam;
@@ -85,8 +84,6 @@ private:
     float c_coeffs [N_DELAYS];
     float g_coeffs [N_DELAYS];
     float M [N_DELAYS];
-    
-    std::vector<DelayAPF> output_allpasses;
 
     juce::dsp::Matrix<float> Q = juce::dsp::Matrix<float>(N_DELAYS, N_DELAYS);
     
@@ -106,20 +103,11 @@ public:
         g = 0.7;
         delayLine.setDelay(1001);
     }
-    DelayAPF(float delayLength, float g) {
+    DelayAPF(float maxDelay, float g) {
         this->g = g;
-        delayLine.setDelay(delayLength);
-    }
-    DelayAPF(float maxDelay) {
         delayLine.setMaximumDelay(maxDelay);
     }
     
-    void autoSetFromDelay(float delayLength, float T60, float fs, bool switchPolarity=false) {
-        delayLine.setDelay(delayLength);
-//        g = pow(10, -3.0*delayLength/(T60*fs));
-        g = .55;
-        if (switchPolarity) g *= -1;
-    }
     void setDelayLength(float delayLength) {
         delayLine.setDelay(delayLength);
     }
@@ -128,9 +116,6 @@ public:
         float output = -g*w + delayLine.nextOut();
         delayLine.tick(w);
         return output;
-        
-//        return -g*(input + g*delayLine.tick(input));
-//        return g*(delayLine.tick(input) - input);
     }
     float g;
 private:
