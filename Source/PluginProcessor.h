@@ -94,6 +94,8 @@ private:
     float earlyGain;
     float fs;
     
+    bool holding;
+    
     void calcAlgorithmParams();
 };
 

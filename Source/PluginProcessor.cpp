@@ -66,7 +66,7 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                               50.0f));
     addParameter(holdParam = new juce::AudioParameterBool("hold",
                                                           "Hold",
-                                                          false));    
+                                                          false));
 }
 
 ColemanJPFinalAReverbTaleAudioProcessor::~ColemanJPFinalAReverbTaleAudioProcessor()
@@ -247,10 +247,9 @@ bool ColemanJPFinalAReverbTaleAudioProcessor::isBusesLayoutSupported (const Buse
 int control = 0;
 void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     dryGain = dryGainParam->get()/100.0;
-    
     float T60 = decayTimeParam->get();
-    
     float total_wet_gain = wetGainParam->get()/100.0;
+    holding = holdParam->get();
     
     
 //    float primes[] = {2,3,5,7};
@@ -361,85 +360,70 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
     auto* leftChannelData = buffer.getWritePointer(0);
     auto* rightChannelData = buffer.getWritePointer(1);
     
-    float x_n[N_DELAYS]; // inputs to delay lines
-    auto delay_out = juce::dsp::Matrix<float>(N_DELAYS, 1);
+    auto pre_output = juce::dsp::Matrix<float>(N_DELAYS, 1);
     auto matrix_out = juce::dsp::Matrix<float>(N_DELAYS, 1);
-    float fbGain_out[N_DELAYS];
-    float ap_out[N_DELAYS];
-    float lp_out[N_DELAYS];
-    
-    
-    float leftWetOutput, rightWetOutput, leftInput, rightInput, leftEarlyDelayed, rightEarlyDelayed;
+    float leftLateOutput, rightLateOutput, leftInput, rightInput,
+        leftEarlyDelayed, rightEarlyDelayed, delay_out, x_n;
+    bool left_out;
 
     for (int samp = 0; samp < buffer.getNumSamples(); samp++) {
+        // set variables before processing
         leftInput = leftChannelData[samp];
         rightInput = rightChannelData[samp];
-        
-        leftWetOutput = 0;
-        rightWetOutput = 0;
-        
+        leftLateOutput = 0;
+        rightLateOutput = 0;
         leftEarlyDelayed = 0;
         rightEarlyDelayed = 0;
         
-        // always take in new input to the early delays
+        // take in new input to the early delays
         early_delayL.tick(leftInput);
         early_delayR.tick(rightInput);
         
         // if not holding, add early delays to FDN
-        if (!holdParam->get()) {
+        if (!holding) {
             leftEarlyDelayed += leftInput;
             rightEarlyDelayed += rightInput;
-            for (int i = 0; i < N_TAPS -  1; i++) {
+            for (int i = 0; i < N_TAPS; i++) {
                 leftEarlyDelayed += early_delayL.tapOut((unsigned long) tapsL[i]);
-                rightEarlyDelayed += early_delayR.tapOut((unsigned long) tapsL[i]);
+                rightEarlyDelayed += early_delayR.tapOut((unsigned long) tapsR[i]); // HMM check this is good
             }
             leftEarlyDelayed /= sqrt(6);
             rightEarlyDelayed /= sqrt(6);
         }
         
         // get feedback values for FDN output
-        bool left_out = true;
+        left_out = true;
         for (int i = 0; i < N_DELAYS; i++){
-            delay_out(i,0) = delays[i].nextOut();
-            delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
-//            if (!holdParam->get())  {
-                delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
-//            }
+            delay_out = delays[i].nextOut();
+            delay_out = high_shelfs[i].tick(delay_out);
+            delay_out = all_passes[i].tick(delay_out);
+            
+            pre_output(i,0) = delay_out;
 
             if (left_out) {
-                leftWetOutput += delay_out(i,0)*c_coeffs[i];
+                leftLateOutput += delay_out*c_coeffs[i];
                 left_out = false;
             } else {
-                rightWetOutput += delay_out(i,0)*c_coeffs[i];
+                rightLateOutput += delay_out*c_coeffs[i];
                 left_out = true;
             }
         }
-        
-        
 
-//        leftWetOutput = output_allpasses[0].tick(leftWetOutput);
-//        rightWetOutput = output_allpasses[0].tick(rightWetOutput);
-        leftChannelData[samp] = leftWetOutput + earlyGain*leftEarlyDelayed + dryGain*leftInput;
-        rightChannelData[samp] = rightWetOutput + earlyGain*rightEarlyDelayed + dryGain*rightInput;
+        // assign outputs
+        leftChannelData[samp] = dryGain*leftInput + earlyGain*leftEarlyDelayed + leftLateOutput;
+        rightChannelData[samp] = dryGain*rightInput + earlyGain*rightEarlyDelayed + rightLateOutput;
         
-        matrix_out = Q * delay_out; // matrix multiply
+        
+        // determine feedback inputs to delay
+        matrix_out = Q * pre_output; // matrix multiply feedback matrix
 
         for (int i = 0; i < N_DELAYS; i++) {
-            // feedback
-//            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
-//            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
-//            lp_out[i] = low_passes[i].tick(ap_out[i]);
-
-            // combine feedback and input
-//            x_n[i] = input*b_coeffs[i] + lp_out[i];
             if (i < N_DELAYS/2) {
-                x_n[i] = leftEarlyDelayed*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
+                x_n = leftEarlyDelayed*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
             } else {
-                x_n[i] = rightEarlyDelayed*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
+                x_n = rightEarlyDelayed*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
             }
-
-            // send to delay line
-            delays[i].tick(x_n[i]);
+            delays[i].tick(x_n);
         }
 
     }
