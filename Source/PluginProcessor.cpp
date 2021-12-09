@@ -66,8 +66,7 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                               50.0f));
     addParameter(holdParam = new juce::AudioParameterBool("hold",
                                                           "Hold",
-                                                          false));
-    
+                                                          false));    
 }
 
 ColemanJPFinalAReverbTaleAudioProcessor::~ColemanJPFinalAReverbTaleAudioProcessor()
@@ -295,7 +294,12 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
 //    float lp_fc = 3000; // 3 kHz, low pass corner frequency
 //    float ap_delays[] = {225, 556, 441, 341}; // all pass corner frequencies
 //    float ap_delays[] = {1109, 1123, 887, 953}; // all pass corner frequencies
+//    float ap_times[4];
+//    if (ABParam->get()) {
     float ap_times[] = {1.07, 2.359, 2.901, 4.73}; // in msec
+//    } else {
+//        float ap_times[] = {7.63, 8.11, 7.77, 6.13};
+//    }
 
                                             // numbers from "Freeverb" digaram by JOS
     
