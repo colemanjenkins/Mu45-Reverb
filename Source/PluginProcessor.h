@@ -68,9 +68,6 @@ private:
     std::vector<stk::DelayA> delays;
     std::vector<stk::BiQuad> all_passes;
     std::vector<stk::BiQuad> low_passes;
-//    std::vector<float> b_coeffs;
-//    std::vector<float> c_coeffs;
-//    std::vector<float> g_coeffs;
     float b_coeffs [N_DELAYS];
     float c_coeffs [N_DELAYS];
     float g_coeffs [N_DELAYS];
