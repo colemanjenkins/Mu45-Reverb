@@ -68,7 +68,7 @@ private:
     juce::AudioParameterFloat* sizeParam; // controls early reflections (and other?)
     
     std::vector<stk::DelayA> delays;
-    std::vector<stk::BiQuad> all_passes;
+    std::vector<DelayAPF> all_passes;
     std::vector<stk::BiQuad> high_shelfs;
     
     float tapsL[N_TAPS];
@@ -79,7 +79,7 @@ private:
     float g_coeffs [N_DELAYS];
     float M [N_DELAYS];
     
-    std::vector<stk::BiQuad> output_allpasses;    
+    std::vector<DelayAPF> output_allpasses;
 
     juce::dsp::Matrix<float> Q = juce::dsp::Matrix<float>(N_DELAYS, N_DELAYS);
     
@@ -100,17 +100,29 @@ public:
         this->g = g;
         delayLine.setDelay(delayLength);
     }
+    DelayAPF(float maxDelay) {
+        delayLine.setMaximumDelay(maxDelay);
+    }
     
+    void autoSetFromDelay(float delayLength, float T60, float fs, bool switchPolarity=false) {
+        delayLine.setDelay(delayLength);
+//        g = pow(10, -3.0*delayLength/(T60*fs));
+        g = .55;
+        if (switchPolarity) g *= -1;
+    }
     void setDelayLength(float delayLength) {
         delayLine.setDelay(delayLength);
     }
-    void setG(float g) {
-        this->g = g;
-    }
     float tick(float input){
-        return g*(delayLine.tick(input) - input);
+        float w = input + delayLine.nextOut()*g;
+        float output = -g*w + delayLine.nextOut();
+        delayLine.tick(w);
+        return output;
+        
+//        return -g*(input + g*delayLine.tick(input));
+//        return g*(delayLine.tick(input) - input);
     }
+    float g;
 private:
     stk::DelayA delayLine;
-    float g;
 };
