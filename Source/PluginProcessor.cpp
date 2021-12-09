@@ -168,21 +168,17 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
         }
     }
     
+//    float M_times[] = {.016, .0065, .003, .0017};
+//    for (int i = 0; i < N_DELAYS; i++) M[i] = nearest_prime(M_times[i]*fs);
     float M_vals[] = {2341, 2411, 2521, 2621}; // spaced out prime numbers
     for (int i = 0; i < N_DELAYS; i++) M[i] = M_vals[i];
-//    int approx_initial = fs*0.05; // 50 ms in samples
-//    int approx_dist = approx_initial/3.3;
-//    int increase = approx_dist/5.7;
-//    for (int i = 0; i < N_DELAYS; i++) {
-//        M[i] = nearest_prime(approx_initial + i*(approx_dist + increase));
-//    }
 
     
 //    int M[] = {2341, 2687, 3329, 3797}; // spaced out prime numbers
     for (int del = 0; del < N_DELAYS; del++) {
         delays.push_back(stk::DelayA(M[del], M[del]));
         all_passes.push_back(stk::BiQuad());
-        low_passes.push_back(stk::BiQuad());
+        high_shelfs.push_back(stk::BiQuad());
     }
     
     output_allpasses.push_back(stk::BiQuad());
@@ -231,8 +227,9 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     float total_wet_gain = wetGainParam->get()/100.0;
     
     for (int i = 0; i < N_DELAYS; i++) {
-//        b_coeffs[i] = 1.0/N_DELAYS; // even to each delay line
-        b_coeffs[i] = 1;
+        float sign = (-2*(i%2)+1);
+        b_coeffs[i] = 1.0; // even to each delay line
+//        b_coeffs[i] = 1/sqrt(N_DELAYS);
         
 //        c_coeffs[i] = total_wet_gain/N_DELAYS;
         c_coeffs[i] = total_wet_gain; // bc b's are divided, this can be maxed
@@ -259,19 +256,23 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
                                             // numbers from "Freeverb" digaram by JOS
     
     float lp_coeffs[5];
-    Mu45FilterCalc::calcCoeffsLPF(lp_coeffs, lp_fc, 0.5, fs);
+    Mu45FilterCalc::calcCoeffsHighShelf(lp_coeffs, lp_fc, -10, fs);
     
     float ap_coeffs[5];
     
     for (int i = 0; i < N_DELAYS; i++) {
         Mu45FilterCalc::calcCoeffsAPF(ap_coeffs, ap_fcs[i], 0.3, fs);
         all_passes[i].setCoefficients(ap_coeffs[0], ap_coeffs[1], ap_coeffs[2], ap_coeffs[3], ap_coeffs[4]);
+//        delays[i].setDelay(ap_delays[i]);
+//        delays[i].setGain(-.7);
         
-        low_passes[i].setCoefficients(lp_coeffs[0], lp_coeffs[1], lp_coeffs[2], lp_coeffs[3], lp_coeffs[4]);
+        high_shelfs[i].setCoefficients(lp_coeffs[0], lp_coeffs[1], lp_coeffs[2], lp_coeffs[3], lp_coeffs[4]);
     }
     
     Mu45FilterCalc::calcCoeffsAPF(ap_coeffs, 501, 0.3 , fs);
     output_allpasses[0].setCoefficients(ap_coeffs[0], ap_coeffs[1], ap_coeffs[2], ap_coeffs[3], ap_coeffs[4]);
+//    output_allpasses[0].setDelayLength(301);
+//    output_allpasses[0].setG(0.7);
 
     
 }
@@ -314,7 +315,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         // get feedback values
         for (int i = 0; i < N_DELAYS; i++){
             delay_out(i,0) = delays[i].nextOut();
-            delay_out(i,0) = low_passes[i].tick(delay_out(i,0));
+            delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
             delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
             
             wetOutput += delay_out(i,0)*c_coeffs[i];

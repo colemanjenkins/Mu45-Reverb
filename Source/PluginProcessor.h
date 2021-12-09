@@ -14,6 +14,7 @@
 #include "Defines.h"
 
 //==============================================================================
+class DelayAPF;
 /**
 */
 class ColemanJPFinalAReverbTaleAudioProcessor  : public juce::AudioProcessor
@@ -67,14 +68,13 @@ private:
     
     std::vector<stk::DelayA> delays;
     std::vector<stk::BiQuad> all_passes;
-    std::vector<stk::BiQuad> low_passes;
+    std::vector<stk::BiQuad> high_shelfs;
     float b_coeffs [N_DELAYS];
     float c_coeffs [N_DELAYS];
     float g_coeffs [N_DELAYS];
     float M [N_DELAYS];
     
-    std::vector<stk::BiQuad> output_allpasses;
-    
+    std::vector<stk::BiQuad> output_allpasses;    
 
     juce::dsp::Matrix<float> Q = juce::dsp::Matrix<float>(N_DELAYS, N_DELAYS);
     
@@ -82,4 +82,30 @@ private:
     float fs;
     
     void calcAlgorithmParams();
+};
+
+// APF structure from Will Pirkle's "Delaying All-Pass Reverberator"
+class DelayAPF {
+public:
+    DelayAPF() {
+        g = 0.7;
+        delayLine.setDelay(1001);
+    }
+    DelayAPF(float delayLength, float g) {
+        this->g = g;
+        delayLine.setDelay(delayLength);
+    }
+    
+    void setDelayLength(float delayLength) {
+        delayLine.setDelay(delayLength);
+    }
+    void setG(float g) {
+        this->g = g;
+    }
+    float tick(float input){
+        return g*(delayLine.tick(input) - input);
+    }
+private:
+    stk::DelayA delayLine;
+    float g;
 };
