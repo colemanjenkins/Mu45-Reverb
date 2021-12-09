@@ -175,7 +175,8 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     
 //    float M_times[] = {.016, .0065, .003, .0017};
 //    for (int i = 0; i < N_DELAYS; i++) M[i] = nearest_prime(M_times[i]*fs);
-    float M_vals[] = {2341, 2411, 2521, 2621}; // spaced out prime numbers
+//    float M_vals[] = {2341, 2411, 2521, 2621}; // spaced out prime numbers
+    float M_vals[] = {727, 881, 1033, 1291};
     for (int i = 0; i < N_DELAYS; i++) M[i] = M_vals[i];
 
     
@@ -187,10 +188,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     }
     
     output_allpasses.push_back(stk::BiQuad());
-    
-    early_delayL.setMaximumDelay(fs);
-    early_delayR.setMaximumDelay(fs);
-    
+        
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::releaseResources()
@@ -235,11 +233,11 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     
     for (int i = 0; i < N_DELAYS; i++) {
         float sign = (-2*(i%2)+1);
-        b_coeffs[i] = 1.0; // even to each delay line
+        b_coeffs[i] = sign*total_wet_gain/sqrt(2); // even to each delay line
 //        b_coeffs[i] = 1/sqrt(N_DELAYS);
         
 //        c_coeffs[i] = total_wet_gain/N_DELAYS;
-        c_coeffs[i] = total_wet_gain; // bc b's are divided, this can be maxed
+        c_coeffs[i] = 1; // bc b's are divided, this can be maxed
         
 //        g_coeffs[i] = pow(10,-60.0*M[i]/(T60*fs)); // determine decay of signals
         g_coeffs[i] = pow(10,-3.0*M[i]/(T60*fs)); // determine decay of signals
@@ -281,18 +279,6 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
 //    output_allpasses[0].setDelayLength(301);
 //    output_allpasses[0].setG(0.7);
 
-    float room_size = sizeParam->get()*10 + 1; // m (roughly used), scaled from 1 - 50 m
-    float time_to_front = room_size/25.0/343.0; // using speed of sound
-
-    float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
-        time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
-    float tap_valsR[] = {time_to_front*fs, (time_to_front + .0002f)*fs, time_to_front*1.2f*fs,
-        (time_to_front*1.87f + .00025f)*fs, time_to_front*2.33f*fs, time_to_front*2.77f*fs};
-    for (int i = 0; i < N_TAPS; i++) {
-        tapsL[i] = tap_valsL[i];
-        tapsR[i] = tap_valsR[i];
-    }
-
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -332,44 +318,37 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         leftWetOutput = 0;
         rightWetOutput = 0;
         
-        early_delayL.tick(leftInput);
-        early_delayR.tick(rightInput);
-        for (int i = 0; i < N_TAPS -  1; i++) {
-            leftWetOutput += early_delayL.tapOut((unsigned long) tapsL[i])/sqrt(6);
-            rightWetOutput += early_delayL.tapOut((unsigned long) tapsL[i])/sqrt(6);
-        }
-        
-//        // get feedback values
-//        for (int i = 0; i < N_DELAYS; i++){
-//            delay_out(i,0) = delays[i].nextOut();
-//            delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
+        // get feedback values
+        for (int i = 0; i < N_DELAYS; i++){
+            delay_out(i,0) = delays[i].nextOut();
+            delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
 //            delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
-//
-//            leftWetOutput += delay_out(i,0)*c_coeffs[i];
-//            rightWetOutput += delay_out(i,0)*c_coeffs[i];
-//        }
-//
+
+            leftWetOutput += delay_out(i,0)*c_coeffs[i];
+            rightWetOutput += delay_out(i,0)*c_coeffs[i];
+        }
+
 //        leftWetOutput = output_allpasses[0].tick(leftWetOutput);
 //        rightWetOutput = output_allpasses[0].tick(rightWetOutput);
         
-        leftChannelData[samp] = leftWetOutput*wetGainParam->get()/100.0 + dryGain*leftInput;
-        rightChannelData[samp] = rightWetOutput*wetGainParam->get()/100.0 + dryGain*rightInput;
+        leftChannelData[samp] = leftWetOutput + dryGain*leftInput;
+        rightChannelData[samp] = rightWetOutput + dryGain*rightInput;
         
-//        matrix_out = Q * delay_out; // matrix multiply
-//
-//        for (int i = 0; i < N_DELAYS; i++) {
-//            // feedback
-//            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
-////            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
-////            lp_out[i] = low_passes[i].tick(ap_out[i]);
-//
-//            // combine feedback and input
-////            x_n[i] = input*b_coeffs[i] + lp_out[i];
-//            x_n[i] = leftInput*b_coeffs[i] + fbGain_out[i];
-//
-//            // send to delay line
-//            delays[i].tick(x_n[i]);
-//        }
+        matrix_out = Q * delay_out; // matrix multiply
+
+        for (int i = 0; i < N_DELAYS; i++) {
+            // feedback
+            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
+//            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
+//            lp_out[i] = low_passes[i].tick(ap_out[i]);
+
+            // combine feedback and input
+//            x_n[i] = input*b_coeffs[i] + lp_out[i];
+            x_n[i] = leftInput*b_coeffs[i] + fbGain_out[i];
+
+            // send to delay line
+            delays[i].tick(x_n[i]);
+        }
 
     }
 }

@@ -71,9 +71,6 @@ private:
     std::vector<stk::BiQuad> all_passes;
     std::vector<stk::BiQuad> high_shelfs;
     
-    stk::DelayA early_delayL;
-    stk::DelayA early_delayR;
-    
     float tapsL[N_TAPS];
     float tapsR[N_TAPS];
     
