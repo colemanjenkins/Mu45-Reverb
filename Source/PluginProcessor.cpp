@@ -39,11 +39,11 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                                 0.0f,
                                                                 100.0f,
                                                                 30.0f));
-    addParameter(densityParam = new juce::AudioParameterFloat("density",
-                                                                "Density",
-                                                                0.0f,
-                                                                100.0f,
-                                                                40.0f));
+//    addParameter(densityParam = new juce::AudioParameterFloat("density",
+//                                                                "Density",
+//                                                                0.0f,
+//                                                                100.0f,
+//                                                                40.0f));
     addParameter(sizeParam = new juce::AudioParameterFloat("size",
                                                                 "Size",
                                                                 0.0f,
@@ -59,6 +59,11 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                               400.0f,
                                                               9000.0f,
                                                               3000.0f));
+    addParameter(earlyReflParam = new juce::AudioParameterFloat("earlyRefl",
+                                                              "Early Reflections",
+                                                              0.0f,
+                                                              100.0f,
+                                                              50.0f));
     addParameter(holdParam = new juce::AudioParameterBool("hold",
                                                           "Hold",
                                                           false));
@@ -259,6 +264,9 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     for (int i = 0; i < N_DELAYS; i++) {
         float sign = (-2*(i%2)+1);
         b_coeffs[i] = sign*total_wet_gain/sqrt(2); // even to each delay line
+//        if (sign < 0) { // -1
+//            b_coeffs[i] *= densityParam->get()/100;
+//        }
 //        b_coeffs[i] = 1/sqrt(N_DELAYS);
         
 //        c_coeffs[i] = total_wet_gain/N_DELAYS;
@@ -325,7 +333,8 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
         tapsL[i] = tap_valsL[i];
         tapsR[i] = tap_valsR[i];
     }
-
+    
+    earlyGain = wetGainParam->get()/100.0*earlyReflParam->get()/100.0;
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -356,7 +365,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
     float lp_out[N_DELAYS];
     
     
-    float leftWetOutput, rightWetOutput, leftInput, rightInput;
+    float leftWetOutput, rightWetOutput, leftInput, rightInput, leftEarlyDelayed, rightEarlyDelayed;
 
     for (int samp = 0; samp < buffer.getNumSamples(); samp++) {
         leftInput = leftChannelData[samp];
@@ -365,45 +374,65 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         leftWetOutput = 0;
         rightWetOutput = 0;
         
+        leftEarlyDelayed = 0;
+        rightEarlyDelayed = 0;
+        
+        // always take in new input to the early delays
         early_delayL.tick(leftInput);
         early_delayR.tick(rightInput);
+        
+        // if not holding, add early delays to FDN
         if (!holdParam->get()) {
+            leftEarlyDelayed += leftInput;
+            rightEarlyDelayed += rightInput;
             for (int i = 0; i < N_TAPS -  1; i++) {
-                leftWetOutput += early_delayL.tapOut((unsigned long) tapsL[i])/sqrt(6);
-                rightWetOutput += early_delayL.tapOut((unsigned long) tapsL[i])/sqrt(6);
+                leftEarlyDelayed += early_delayL.tapOut((unsigned long) tapsL[i]);
+                rightEarlyDelayed += early_delayR.tapOut((unsigned long) tapsL[i]);
             }
+            leftEarlyDelayed /= sqrt(6);
+            rightEarlyDelayed /= sqrt(6);
         }
         
-        // get feedback values
+        // get feedback values for FDN output
+        bool left_out = true;
         for (int i = 0; i < N_DELAYS; i++){
             delay_out(i,0) = delays[i].nextOut();
             delay_out(i,0) = high_shelfs[i].tick(delay_out(i,0));
-            if (!holdParam->get())  {
+//            if (!holdParam->get())  {
                 delay_out(i,0) = all_passes[i].tick(delay_out(i,0));
-            }
+//            }
 
-            leftWetOutput += delay_out(i,0)*c_coeffs[i];
-            rightWetOutput += delay_out(i,0)*c_coeffs[i];
+            if (left_out) {
+                leftWetOutput += delay_out(i,0)*c_coeffs[i];
+                left_out = false;
+            } else {
+                rightWetOutput += delay_out(i,0)*c_coeffs[i];
+                left_out = true;
+            }
         }
         
         
 
 //        leftWetOutput = output_allpasses[0].tick(leftWetOutput);
 //        rightWetOutput = output_allpasses[0].tick(rightWetOutput);
-        leftChannelData[samp] = leftWetOutput + dryGain*leftInput;
-        rightChannelData[samp] = rightWetOutput + dryGain*rightInput;
+        leftChannelData[samp] = leftWetOutput + earlyGain*leftEarlyDelayed + dryGain*leftInput;
+        rightChannelData[samp] = rightWetOutput + earlyGain*rightEarlyDelayed + dryGain*rightInput;
         
         matrix_out = Q * delay_out; // matrix multiply
 
         for (int i = 0; i < N_DELAYS; i++) {
             // feedback
-            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
+//            fbGain_out[i] = matrix_out(i,0)*g_coeffs[i];
 //            ap_out[i] = all_passes[i].tick(fbGain_out[i]);
 //            lp_out[i] = low_passes[i].tick(ap_out[i]);
 
             // combine feedback and input
 //            x_n[i] = input*b_coeffs[i] + lp_out[i];
-            x_n[i] = leftInput*b_coeffs[i] + fbGain_out[i];
+            if (i < N_DELAYS/2) {
+                x_n[i] = leftEarlyDelayed*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
+            } else {
+                x_n[i] = rightEarlyDelayed*b_coeffs[i] + matrix_out(i,0)*g_coeffs[i];
+            }
 
             // send to delay line
             delays[i].tick(x_n[i]);

@@ -64,10 +64,11 @@ private:
     juce::AudioParameterFloat* decayTimeParam;
     juce::AudioParameterFloat* dryGainParam;
     juce::AudioParameterFloat* wetGainParam;
-    juce::AudioParameterFloat* densityParam;
+//    juce::AudioParameterFloat* densityParam;
     juce::AudioParameterFloat* sizeParam; // controls early reflections (and other?)
     juce::AudioParameterFloat* dampingParam;
     juce::AudioParameterFloat* decayFreqParam;
+    juce::AudioParameterFloat* earlyReflParam;
     juce::AudioParameterBool*  holdParam;
     
     std::vector<stk::DelayA> delays;
@@ -90,6 +91,7 @@ private:
     juce::dsp::Matrix<float> Q = juce::dsp::Matrix<float>(N_DELAYS, N_DELAYS);
     
     float dryGain;
+    float earlyGain;
     float fs;
     
     void calcAlgorithmParams();
