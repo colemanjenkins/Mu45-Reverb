@@ -46,9 +46,9 @@ ColemanJPFinalAReverbTaleAudioProcessor::ColemanJPFinalAReverbTaleAudioProcessor
                                                                 40.0f));
     addParameter(dampingParam = new juce::AudioParameterFloat("damping",
                                                               "Damping",
-                                                              -40.0f,
-                                                              0.0f,
-                                                              -16.0f));
+                                                              0,
+                                                              40.0f,
+                                                              16.0f));
     addParameter(decayFreqParam = new juce::AudioParameterFloat("decayFreq",
                                                               "Decay Frequency",
                                                               400.0f,
@@ -249,7 +249,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     
     // set parameters for high shelf filters
     float hs_coeffs[5];
-    Mu45FilterCalc::calcCoeffsHighShelf(hs_coeffs, decayFreqParam->get(), dampingParam->get(), fs);
+    Mu45FilterCalc::calcCoeffsHighShelf(hs_coeffs, decayFreqParam->get(), -dampingParam->get(), fs);
     
     for (int i = 0; i < N_DELAYS; i++) {
         high_shelfs[i].setCoefficients(hs_coeffs[0], hs_coeffs[1], hs_coeffs[2], hs_coeffs[3], hs_coeffs[4]);

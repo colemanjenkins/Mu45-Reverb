@@ -12,3 +12,10 @@
 
 #define N_DELAYS 4
 #define N_TAPS   6
+
+// GUI
+#define DX      24
+#define DY      20
+
+#define CONTAINER_WIDTH     35*DX
+#define CONTAINER_HEIGHT    17*DY
