@@ -96,7 +96,7 @@ private:
     void calcAlgorithmParams();
 };
 
-// APF structure from Will Pirkle's "Delaying All-Pass Reverberator"
+// APF structure based on Will Pirkle's "Delaying All-Pass Reverberator"
 class DelayAPF {
 public:
     DelayAPF() {

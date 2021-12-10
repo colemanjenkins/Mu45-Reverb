@@ -373,12 +373,32 @@ void ColemanJPFinalAReverbTaleAudioProcessor::getStateInformation (juce::MemoryB
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
+    juce::XmlElement xml ("Parameters");
+    for (int i = 0; i < getParameters().size() - 1; ++i) // - 1 to ignore holdParam (an AudioParameterBool)
+    {
+        juce::AudioParameterFloat* param = (juce::AudioParameterFloat*)getParameters().getUnchecked(i);
+        juce::XmlElement* paramElement = new juce::XmlElement ("parameter" + juce::String(std::to_string(i)));
+        paramElement->setAttribute ("value", param->get());
+        xml.addChildElement (paramElement);
+    }
+    copyXmlToBinary (xml, destData);
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+    if (xmlState->hasTagName ("Parameters")) // read Parameters tag
+    {
+        juce::AudioParameterFloat* param;
+        for (auto* element : xmlState->getChildIterator()) // loop through the saved parameter values and update them
+        {
+            int paramNum = std::stoi(element->getTagName().substring(9).toStdString()); // chops off beginnging "parameter"
+            param = (juce::AudioParameterFloat*) getParameters().getUnchecked(paramNum);
+            *param = element->getDoubleAttribute("value"); // set parameter value
+        }
+    }
 }
 
 //==============================================================================
