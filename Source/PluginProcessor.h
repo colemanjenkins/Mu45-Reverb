@@ -93,6 +93,11 @@ private:
     
     bool holding;
     
+//    // Leaky integrator for room size change
+//    float sizeB0;
+//    float sizeTau = 35.0/1000.0; // sec
+//    float size_value = 1;
+    
     void calcAlgorithmParams();
 };
 

@@ -76,4 +76,5 @@ private:
     
     void createSmallKnob(juce::Slider&,float x, float y, float interval, float skew, parameterMap param);
     void createWetDrySlider(juce::Slider&, float x, float y, parameterMap param);
+    
 };

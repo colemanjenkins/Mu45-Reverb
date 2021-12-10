@@ -193,6 +193,8 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     for (int i = 0; i < N_DELAYS; i++) {
         all_passes[i].setDelayLength(ap_times[i]*fs/1000.0);
     }
+    
+//    sizeB0 = 1 - exp(-1.0*samplesPerBlock/(sizeTau*fs));
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::releaseResources()
@@ -256,6 +258,8 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
     }
         
     // magic numbers that worked when changing early delay lengths :)
+//    size_value += sizeB0*(sizeParam->get() - size_value);
+//    float room_size = size_value*10 + 1;
     float room_size = sizeParam->get()*10 + 1;
     float time_to_front = room_size/25.0/343.0;
 
