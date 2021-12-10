@@ -163,6 +163,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
     fs = (float) sampleRate;
+    size_value = sizeParam->get();
        
     float f = 1/sqrt(2);
     // Modified Hadamard matrix 4x4
@@ -194,7 +195,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
         all_passes[i].setDelayLength(ap_times[i]*fs/1000.0);
     }
     
-//    sizeB0 = 1 - exp(-1.0*samplesPerBlock/(sizeTau*fs));
+    sizeB0 = 1 - exp(-1.0/(sizeTau*fs));
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::releaseResources()
@@ -257,20 +258,20 @@ void ColemanJPFinalAReverbTaleAudioProcessor::calcAlgorithmParams() {
         high_shelfs[i].setCoefficients(hs_coeffs[0], hs_coeffs[1], hs_coeffs[2], hs_coeffs[3], hs_coeffs[4]);
     }
         
-    // magic numbers that worked when changing early delay lengths :)
-//    size_value += sizeB0*(sizeParam->get() - size_value);
+//    // magic numbers that worked when changing early delay lengths :)
+////    size_value += sizeB0*(sizeParam->get() - size_value);
 //    float room_size = size_value*10 + 1;
-    float room_size = sizeParam->get()*10 + 1;
-    float time_to_front = room_size/25.0/343.0;
-
-    float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
-        time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
-    float tap_valsR[] = {time_to_front*fs, (time_to_front + .0002f)*fs, time_to_front*1.2f*fs,
-        (time_to_front*1.87f + .00025f)*fs, time_to_front*2.33f*fs, time_to_front*2.77f*fs};
-    for (int i = 0; i < N_TAPS; i++) {
-        tapsL[i] = tap_valsL[i];
-        tapsR[i] = tap_valsR[i];
-    }
+////    float room_size = sizeParam->get()*10 + 1;
+//    float time_to_front = room_size/25.0/343.0;
+//
+//    float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
+//        time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
+//    float tap_valsR[] = {time_to_front*fs, (time_to_front + .0002f)*fs, time_to_front*1.2f*fs,
+//        (time_to_front*1.87f + .00025f)*fs, time_to_front*2.33f*fs, time_to_front*2.77f*fs};
+//    for (int i = 0; i < N_TAPS; i++) {
+//        tapsL[i] = tap_valsL[i];
+//        tapsR[i] = tap_valsR[i];
+//    }
 }
 
 void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -298,6 +299,8 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
     float leftLateOutput, rightLateOutput, leftInput, rightInput,
         leftEarlyDelayed, rightEarlyDelayed, delay_out, x_n;
     bool left_out;
+    
+    float leftInterp, rightInterp;
 
     for (int samp = 0; samp < buffer.getNumSamples(); samp++) {
         // set variables before processing
@@ -316,9 +319,28 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         if (!holding) {
             leftEarlyDelayed += leftInput;
             rightEarlyDelayed += rightInput;
+            
+            // set early reflection values
+            float room_size = size_value*10 + 1;
+        //    float room_size = sizeParam->get()*10 + 1;
+            float time_to_front = room_size/25.0/343.0;
+
+            float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
+                time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
+            float tap_valsR[] = {time_to_front*fs, (time_to_front + .0002f)*fs, time_to_front*1.2f*fs,
+                (time_to_front*1.87f + .00025f)*fs, time_to_front*2.33f*fs, time_to_front*2.77f*fs};
             for (int i = 0; i < N_TAPS; i++) {
-                leftEarlyDelayed += early_delayL.tapOut((unsigned long) tapsL[i]);
-                rightEarlyDelayed += early_delayR.tapOut((unsigned long) tapsR[i]); // HMM check this is good
+                tapsL[i] = tap_valsL[i];
+                tapsR[i] = tap_valsR[i];
+            }
+            
+            for (int i = 0; i < N_TAPS; i++) {
+                leftInterp = tapsL[i] - floor(tapsL[i]);
+                rightInterp = tapsR[i] - floor(tapsR[i]);
+                leftEarlyDelayed += early_delayL.tapOut(floor(tapsL[i]))*leftInterp +
+                                    early_delayL.tapOut(ceil(tapsL[i]))*(1-leftInterp);
+                rightEarlyDelayed += early_delayR.tapOut(floor(tapsR[i]))*rightInterp +
+                                    early_delayR.tapOut(ceil(tapsR[i]))*(1-rightInterp);
             }
             leftEarlyDelayed /= sqrt(6);
             rightEarlyDelayed /= sqrt(6);
@@ -357,6 +379,9 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
             }
             delays[i].tick(x_n);
         }
+        
+        // update size env follower
+        size_value += sizeB0*(sizeParam->get() - size_value);
     }
 }
 
