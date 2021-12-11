@@ -77,8 +77,8 @@ private:
     stk::DelayA early_delayL;
     stk::DelayA early_delayR;
     
-    float tapsL[N_TAPS];
-    float tapsR[N_TAPS];
+//    float tapsL[N_TAPS];
+//    float tapsR[N_TAPS];
     
     float b_coeffs [N_DELAYS];
     float c_coeffs [N_DELAYS];
@@ -93,7 +93,7 @@ private:
     
     bool holding;
     
-    // Leaky integrator for room size change
+    // Env follower for room size change
     float sizeB0;
     float sizeTau = 35.0/1000.0; // sec
     float size_value;

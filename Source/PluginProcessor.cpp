@@ -311,28 +311,23 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
         leftEarlyDelayed = 0;
         rightEarlyDelayed = 0;
         
-        // take in new input to the early delays
-        early_delayL.tick(leftInput);
-        early_delayR.tick(rightInput);
         
         // if not holding, add early delays to FDN
         if (!holding) {
+            // take in new input to the early delays
+            early_delayL.tick(leftInput);
+            early_delayR.tick(rightInput);
+
             leftEarlyDelayed += leftInput;
             rightEarlyDelayed += rightInput;
             
             // set early reflection values
-            float room_size = size_value*10 + 1;
-        //    float room_size = sizeParam->get()*10 + 1;
-            float time_to_front = room_size/25.0/343.0;
+            float room_size = (size_value*10 + 1)/25.0/343.0;
 
-            float tap_valsL[] = {time_to_front*fs, time_to_front*fs, (time_to_front*1.2f + .0001f)*fs,
-                time_to_front*1.87f*fs, (time_to_front*2.33f + .0003f)*fs, time_to_front*2.77f*fs};
-            float tap_valsR[] = {time_to_front*fs, (time_to_front + .0002f)*fs, time_to_front*1.2f*fs,
-                (time_to_front*1.87f + .00025f)*fs, time_to_front*2.33f*fs, time_to_front*2.77f*fs};
-            for (int i = 0; i < N_TAPS; i++) {
-                tapsL[i] = tap_valsL[i];
-                tapsR[i] = tap_valsR[i];
-            }
+            float tapsL[N_TAPS] = {room_size*fs, room_size*fs, (room_size*1.2f + .0001f)*fs,
+                room_size*1.87f*fs, (room_size*2.33f + .0003f)*fs, room_size*2.77f*fs};
+            float tapsR[N_TAPS] = {room_size*fs, (room_size + .0002f)*fs, room_size*1.2f*fs,
+                (room_size*1.87f + .00025f)*fs, room_size*2.33f*fs, room_size*2.77f*fs};
             
             for (int i = 0; i < N_TAPS; i++) {
                 leftInterp = tapsL[i] - floor(tapsL[i]);
@@ -344,7 +339,12 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
             }
             leftEarlyDelayed /= sqrt(6);
             rightEarlyDelayed /= sqrt(6);
+        } else {
+            early_delayL.tick(0);
+            early_delayR.tick(0);
         }
+        // update size env follower
+        size_value += sizeB0*(sizeParam->get() - size_value);
         
         // get feedback values for FDN output
         left_out = true;
@@ -380,8 +380,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::processBlock (juce::AudioBuffer<fl
             delays[i].tick(x_n);
         }
         
-        // update size env follower
-        size_value += sizeB0*(sizeParam->get() - size_value);
+
     }
 }
 
@@ -428,6 +427,9 @@ void ColemanJPFinalAReverbTaleAudioProcessor::setStateInformation (const void* d
             *param = element->getDoubleAttribute("value"); // set parameter value
         }
     }
+    
+    // update size_value right away so it doesn't go through the env follower
+    size_value = sizeParam->get();
 }
 
 //==============================================================================
