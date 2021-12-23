@@ -183,7 +183,7 @@ void ColemanJPFinalAReverbTaleAudioProcessor::prepareToPlay (double sampleRate, 
     
     for (int del = 0; del < N_DELAYS; del++) {
         delays.push_back(stk::DelayA(M[del], M[del]));
-        all_passes.push_back(DelayAPF(2000, 0.55)); // MAGIC NUMBER
+        all_passes.push_back(DelayAPF(2000, 0.55));
         high_shelfs.push_back(stk::BiQuad());
     }
     
